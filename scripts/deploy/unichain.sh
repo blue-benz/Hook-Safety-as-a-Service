@@ -1,0 +1,346 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ENV_FILE="$ROOT_DIR/.env"
+DEPLOY_FILE="$ROOT_DIR/deployments/sepolia.json"
+
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Missing required command: $1"
+    exit 1
+  fi
+}
+
+require_cmd cast
+require_cmd forge
+require_cmd jq
+
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+fi
+
+RPC_URL="${UNICHAIN_SEPOLIA_RPC_URL:-${SEPOLIA_RPC_URL:-}}"
+PRIVATE_KEY="${SEPOLIA_PRIVATE_KEY:-${PRIVATE_KEY:-}}"
+OWNER="${OWNER_ADDRESS:-${OWNER:-}}"
+POOL_MANAGER="${POOL_MANAGER:-${POOL_MANAGER_ADDRESS:-}}"
+CALLBACK_PROXY="${CALLBACK_PROXY:-$OWNER}"
+
+REACTIVE_RPC="${REACTIVE_RPC_URL:-}"
+REACTIVE_KEY="${REACTIVE_PRIVATE_KEY:-}"
+SERVICE_CONTRACT="${SERVICE_CONTRACT:-0x0000000000000000000000000000000000fffFfF}"
+
+ORIGIN_CHAIN_ID="${ORIGIN_CHAIN_ID:-1301}"
+DESTINATION_CHAIN_ID="${DESTINATION_CHAIN_ID:-1301}"
+MEDIUM_THRESHOLD="${MEDIUM_THRESHOLD:-55}"
+HIGH_THRESHOLD="${HIGH_THRESHOLD:-80}"
+
+UNICHAIN_EXPLORER_BASE="${UNICHAIN_EXPLORER_BASE:-https://sepolia.uniscan.xyz}"
+LASNA_EXPLORER_BASE="${LASNA_EXPLORER_BASE:-https://lasna.reactscan.net}"
+
+DEMO_CURRENCY0="${DEMO_CURRENCY0:-0x1111111111111111111111111111111111111111}"
+DEMO_CURRENCY1="${DEMO_CURRENCY1:-0x2222222222222222222222222222222222222222}"
+DEMO_TICK_SPACING="${DEMO_TICK_SPACING:-60}"
+DYNAMIC_FEE_FLAG="${DYNAMIC_FEE_FLAG:-8388608}"
+
+if [[ -z "$RPC_URL" || -z "$PRIVATE_KEY" || -z "$OWNER" || -z "$POOL_MANAGER" ]]; then
+  echo "Missing required environment values. Required: RPC_URL, PRIVATE_KEY, OWNER, POOL_MANAGER."
+  exit 1
+fi
+
+mkdir -p "$ROOT_DIR/deployments"
+
+code_exists() {
+  local address="$1"
+  local rpc="$2"
+  local code
+  code="$(cast code "$address" --rpc-url "$rpc" 2>/dev/null || true)"
+  [[ -n "$code" && "$code" != "0x" ]]
+}
+
+is_tx_hash() {
+  local maybe_hash="$1"
+  [[ "$maybe_hash" =~ ^0x[0-9a-fA-F]{64}$ ]]
+}
+
+current_nonce() {
+  cast nonce "$OWNER" --rpc-url "$RPC_URL"
+}
+
+upsert_env() {
+  local key="$1"
+  local value="$2"
+
+  if [[ ! -f "$ENV_FILE" ]]; then
+    touch "$ENV_FILE"
+  fi
+
+  if grep -q "^${key}=" "$ENV_FILE"; then
+    sed -i '' "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+  else
+    printf "%s=%s\n" "$key" "$value" >>"$ENV_FILE"
+  fi
+}
+
+deploy_from_artifact() {
+  local artifact="$1"
+  local constructor_sig="$2"
+  local rpc="$3"
+  local key="$4"
+  shift 4
+
+  local bytecode
+  local args
+  local data
+  local output
+  local tx_hash
+  local contract_address
+  local nonce
+
+  bytecode="$(jq -r '.bytecode.object' "$artifact")"
+  args="$(cast abi-encode "$constructor_sig" "$@")"
+  data="${bytecode}${args:2}"
+  nonce="$(current_nonce)"
+
+  output="$(cast send --rpc-url "$rpc" --private-key "$key" --nonce "$nonce" --create "$data")"
+  tx_hash="$(awk '/^transactionHash[[:space:]]/{print $2; exit}' <<<"$output")"
+  contract_address="$(awk '/^contractAddress[[:space:]]/{print $2; exit}' <<<"$output")"
+
+  if [[ -z "$tx_hash" || -z "$contract_address" ]]; then
+    echo "Failed to parse deployment output:"
+    echo "$output"
+    exit 1
+  fi
+
+  printf "%s|%s\n" "$contract_address" "$tx_hash"
+}
+
+hook_addr="${HOOK_ADDRESS:-}"
+hook_tx="${HOOK_DEPLOY_TX:-}"
+if [[ -n "$hook_tx" ]] && ! is_tx_hash "$hook_tx"; then
+  hook_tx=""
+fi
+
+if [[ -n "$hook_addr" ]] && code_exists "$hook_addr" "$RPC_URL"; then
+  echo "Using existing hook: $hook_addr"
+else
+  echo "Deploying HookSafetyFirewallHook..."
+  export POOL_MANAGER OWNER
+  forge script scripts/foundry/00_DeployHookFirewall.s.sol:DeployHookFirewallScript \
+    --rpc-url "$RPC_URL" \
+    --private-key "$PRIVATE_KEY" \
+    --broadcast >/tmp/hook-deploy.log 2>&1
+
+  hook_addr="$(jq -r '.returns.hook.value' "$ROOT_DIR/broadcast/00_DeployHookFirewall.s.sol/1301/run-latest.json")"
+  hook_tx="$(jq -r '.transactions[0].hash' "$ROOT_DIR/broadcast/00_DeployHookFirewall.s.sol/1301/run-latest.json")"
+
+  if [[ -z "$hook_addr" || "$hook_addr" == "null" || -z "$hook_tx" || "$hook_tx" == "null" ]]; then
+    echo "Hook deployment output could not be parsed."
+    cat /tmp/hook-deploy.log
+    exit 1
+  fi
+fi
+
+prod_executor_addr="${EXECUTOR_ADDRESS:-}"
+prod_executor_tx="${EXECUTOR_DEPLOY_TX:-}"
+if [[ -n "$prod_executor_tx" ]] && ! is_tx_hash "$prod_executor_tx"; then
+  prod_executor_tx=""
+fi
+
+if [[ -n "$prod_executor_addr" ]] && code_exists "$prod_executor_addr" "$RPC_URL"; then
+  echo "Using existing executor: $prod_executor_addr"
+else
+  echo "Deploying HookSafetyExecutor (callback proxy authenticated)..."
+  IFS='|' read -r prod_executor_addr prod_executor_tx < <(
+    deploy_from_artifact \
+      "$ROOT_DIR/out/HookSafetyExecutor.sol/HookSafetyExecutor.json" \
+      "constructor(address,address,address)" \
+      "$RPC_URL" \
+      "$PRIVATE_KEY" \
+      "$CALLBACK_PROXY" \
+      "$hook_addr" \
+      "$OWNER"
+  )
+fi
+
+demo_executor_addr="${DEMO_EXECUTOR_ADDRESS:-}"
+demo_executor_tx="${DEMO_EXECUTOR_DEPLOY_TX:-}"
+if [[ -n "$demo_executor_tx" ]] && ! is_tx_hash "$demo_executor_tx"; then
+  demo_executor_tx=""
+fi
+
+if [[ -n "$demo_executor_addr" ]] && code_exists "$demo_executor_addr" "$RPC_URL"; then
+  echo "Using existing demo executor: $demo_executor_addr"
+else
+  echo "Deploying HookSafetyExecutor (demo callback sender = owner)..."
+  IFS='|' read -r demo_executor_addr demo_executor_tx < <(
+    deploy_from_artifact \
+      "$ROOT_DIR/out/HookSafetyExecutor.sol/HookSafetyExecutor.json" \
+      "constructor(address,address,address)" \
+      "$RPC_URL" \
+      "$PRIVATE_KEY" \
+      "$OWNER" \
+      "$hook_addr" \
+      "$OWNER"
+  )
+fi
+
+prev_reactive_addr=""
+prev_reactive_tx=""
+if [[ -f "$DEPLOY_FILE" ]]; then
+  prev_reactive_addr="$(jq -r '.reactiveLasna.reactive // empty' "$DEPLOY_FILE" 2>/dev/null || true)"
+  prev_reactive_tx="$(jq -r '.reactiveLasna.tx.deployReactive // empty' "$DEPLOY_FILE" 2>/dev/null || true)"
+  if [[ "$prev_reactive_addr" == "null" ]]; then
+    prev_reactive_addr=""
+  fi
+  if [[ "$prev_reactive_tx" == "null" ]]; then
+    prev_reactive_tx=""
+  fi
+fi
+
+reactive_addr="${REACTIVE_ADDRESS:-$prev_reactive_addr}"
+reactive_tx="${REACTIVE_DEPLOY_TX:-$prev_reactive_tx}"
+reactive_status="not_attempted"
+if [[ -n "$reactive_tx" ]] && ! is_tx_hash "$reactive_tx"; then
+  reactive_tx=""
+fi
+
+if [[ -n "$reactive_addr" && -n "$REACTIVE_RPC" ]] && code_exists "$reactive_addr" "$REACTIVE_RPC"; then
+  reactive_status="existing"
+else
+  reactive_addr=""
+  reactive_tx=""
+
+  if [[ -n "$REACTIVE_RPC" && -n "$REACTIVE_KEY" ]]; then
+    reactive_status="skipped_insufficient_funds"
+    reactive_balance="$(cast balance "$OWNER" --rpc-url "$REACTIVE_RPC" 2>/dev/null || echo 0)"
+    # Avoid bash signed-int overflow for large uint256 balances.
+    if [[ "$reactive_balance" =~ ^[0-9]+$ ]] && [[ "$reactive_balance" != "0" ]]; then
+      echo "Deploying HookSafetyReactive on Lasna..."
+      IFS='|' read -r reactive_addr reactive_tx < <(
+        deploy_from_artifact \
+          "$ROOT_DIR/out/HookSafetyReactive.sol/HookSafetyReactive.json" \
+          "constructor(address,uint256,address,uint256,address,uint16,uint16)" \
+          "$REACTIVE_RPC" \
+          "$REACTIVE_KEY" \
+          "$SERVICE_CONTRACT" \
+          "$ORIGIN_CHAIN_ID" \
+          "$hook_addr" \
+          "$DESTINATION_CHAIN_ID" \
+          "$prod_executor_addr" \
+          "$MEDIUM_THRESHOLD" \
+          "$HIGH_THRESHOLD"
+      )
+      reactive_status="deployed"
+    fi
+  else
+    reactive_status="skipped_missing_config"
+  fi
+fi
+
+pool_key_encoded="$(
+  cast abi-encode \
+    "f(address,address,uint24,int24,address)" \
+    "$DEMO_CURRENCY0" \
+    "$DEMO_CURRENCY1" \
+    "$DYNAMIC_FEE_FLAG" \
+    "$DEMO_TICK_SPACING" \
+    "$hook_addr"
+)"
+pool_id="$(cast keccak "$pool_key_encoded")"
+
+reactive_addr_json="null"
+reactive_tx_json="null"
+if [[ -n "$reactive_addr" ]]; then
+  reactive_addr_json="\"$reactive_addr\""
+fi
+if [[ -n "$reactive_tx" ]]; then
+  reactive_tx_json="\"$reactive_tx\""
+fi
+
+cat >"$DEPLOY_FILE" <<JSON
+{
+  "network": "unichain-sepolia",
+  "chainId": $DESTINATION_CHAIN_ID,
+  "explorers": {
+    "unichainSepolia": "$UNICHAIN_EXPLORER_BASE",
+    "lasna": "$LASNA_EXPLORER_BASE"
+  },
+  "unichainSepolia": {
+    "hook": "$hook_addr",
+    "executor": "$prod_executor_addr",
+    "demoExecutor": "$demo_executor_addr",
+    "poolId": "$pool_id",
+    "poolKey": {
+      "currency0": "$DEMO_CURRENCY0",
+      "currency1": "$DEMO_CURRENCY1",
+      "fee": $DYNAMIC_FEE_FLAG,
+      "tickSpacing": $DEMO_TICK_SPACING,
+      "hooks": "$hook_addr"
+    },
+    "tx": {
+      "deployHook": "$hook_tx",
+      "deployExecutor": "$prod_executor_tx",
+      "deployDemoExecutor": "$demo_executor_tx"
+    }
+  },
+  "reactiveLasna": {
+    "reactive": $reactive_addr_json,
+    "status": "$reactive_status",
+    "tx": {
+      "deployReactive": $reactive_tx_json
+    }
+  }
+}
+JSON
+
+upsert_env "HOOK_ADDRESS" "$hook_addr"
+upsert_env "EXECUTOR_ADDRESS" "$prod_executor_addr"
+upsert_env "DEMO_EXECUTOR_ADDRESS" "$demo_executor_addr"
+upsert_env "DEMO_POOL_ID" "$pool_id"
+upsert_env "DEMO_CURRENCY0" "$DEMO_CURRENCY0"
+upsert_env "DEMO_CURRENCY1" "$DEMO_CURRENCY1"
+upsert_env "DEMO_TICK_SPACING" "$DEMO_TICK_SPACING"
+upsert_env "DYNAMIC_FEE_FLAG" "$DYNAMIC_FEE_FLAG"
+upsert_env "HOOK_DEPLOY_TX" "$hook_tx"
+upsert_env "EXECUTOR_DEPLOY_TX" "$prod_executor_tx"
+upsert_env "DEMO_EXECUTOR_DEPLOY_TX" "$demo_executor_tx"
+if [[ -n "$reactive_addr" ]]; then
+  upsert_env "REACTIVE_ADDRESS" "$reactive_addr"
+fi
+if [[ -n "$reactive_tx" ]]; then
+  upsert_env "REACTIVE_DEPLOY_TX" "$reactive_tx"
+fi
+upsert_env "UNICHAIN_EXPLORER_BASE" "$UNICHAIN_EXPLORER_BASE"
+upsert_env "LASNA_EXPLORER_BASE" "$LASNA_EXPLORER_BASE"
+
+echo
+echo "Deployment summary"
+echo "  Hook:            $hook_addr"
+echo "  Executor:        $prod_executor_addr"
+echo "  Demo Executor:   $demo_executor_addr"
+echo "  Reactive (Lasna): ${reactive_addr:-N/A} ($reactive_status)"
+echo "  PoolId:          $pool_id"
+echo
+echo "Explorer links"
+if is_tx_hash "$hook_tx"; then
+  echo "  Hook tx:         $UNICHAIN_EXPLORER_BASE/tx/$hook_tx"
+else
+  echo "  Hook tx:         N/A"
+fi
+if is_tx_hash "$prod_executor_tx"; then
+  echo "  Executor tx:     $UNICHAIN_EXPLORER_BASE/tx/$prod_executor_tx"
+else
+  echo "  Executor tx:     N/A"
+fi
+if is_tx_hash "$demo_executor_tx"; then
+  echo "  Demo Executor tx:$UNICHAIN_EXPLORER_BASE/tx/$demo_executor_tx"
+else
+  echo "  Demo Executor tx:N/A"
+fi
+if [[ -n "$reactive_tx" ]]; then
+  echo "  Reactive tx:     $LASNA_EXPLORER_BASE/tx/$reactive_tx"
+fi

@@ -1,0 +1,45 @@
+{
+  "network": "unichain-sepolia",
+  "chainId": 1301,
+  "explorers": {
+    "unichainSepolia": "https://sepolia.uniscan.xyz",
+    "lasna": "https://lasna.reactscan.net"
+  },
+  "unichainSepolia": {
+    "hook": "0x410957D5dC016D922DfC37f6Efb6EA2F18d3c0C0",
+    "executor": "0xe2095ba6959E6eEcf67A5a3d3e9b60238AB27C22",
+    "demoExecutor": "0xbefCFAEE2094e8c8aF8ECFc77813edE4BDd01262",
+    "poolId": "0xf9980e4e31f2f300e115a8f5585c64b6e26c06f92a854b0a80aa506e41351c58",
+    "poolKey": {
+      "currency0": "0x1111111111111111111111111111111111111111",
+      "currency1": "0x2222222222222222222222222222222222222222",
+      "fee": 8388608,
+      "tickSpacing": 60,
+      "hooks": "0x410957D5dC016D922DfC37f6Efb6EA2F18d3c0C0"
+    },
+    "tx": {
+      "deployHook": "0xaf944f9d5a92175339de45d69d9990387a87b9d256087245a79f93e0a6b870a1",
+      "deployExecutor": "0xa1a1aecff7259247bcf5121246f1cfc8dbfe022d62272b9246c755d8b75183d1",
+      "deployDemoExecutor": "0x3a955dc2441e66e3c3f4192cd7c200018ab3a323ec1f70d4f5b853f9f5710171",
+      "authorizeExecutor": "0xc32a52f5a3fd58e7384287cd07a80b8ff7d43282878ae48317475490be684c27",
+      "authorizeDemoExecutor": "0x003b80ec7a7997a5992693cf7da5ca8b0fe5c0176d2ca29ec61ffea946e80daf",
+      "configurePool": "0xadc58c86caf8110e5a9cdbd3bb89f5b59a5f0518f142723294b49b930b831732",
+      "attack": "0x660eb4488d4feb56e454415b177fbeb657e70b1844d69df098189183a667167c",
+      "detection": "0x50bf5d0caec71743ddacd2c9474d2d177728e6f04fecbb5a14cc9ecb9478266c",
+      "mitigation": "0x66f5209ae1a620ea000b572e30bf9eb715adfe09d006755df404ec3485178b2c"
+    },
+    "outcome": {
+      "tier": 2,
+      "feePips": 20000,
+      "pauseUntil": 1773218227,
+      "throttleUntil": 1773218347
+    }
+  },
+  "reactiveLasna": {
+    "reactive": "0x513776bcabab7198c91d6ac749933b62f3ee3a15",
+    "status": "existing",
+    "tx": {
+      "deployReactive": "0xb7ebd362eb577c4eea087fea6d47673d7ab9e83552cdc7a1e3e800059ea011df"
+    }
+  }
+}

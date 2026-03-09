@@ -192,3 +192,23 @@ Residual risks:
 - Commit `3779387` is interpreted as the pinned Uniswap v4 **periphery** commit; core is pinned to its linked submodule commit.
 - Local integration tests simulate Reactive callback proxy payload rewrite by patching callback arg #1 in test harness.
 - Full production deployment runbooks assume RPC credentials and funded keys are provided externally.
+
+## 11. Demo Workflow (End-to-End)
+
+`scripts/demo/sepolia.sh` executes and logs a full deterministic lifecycle in phases:
+
+1. Resolve deployments
+   - Ensures hook/executor contracts are deployed (`scripts/deploy/unichain.sh`).
+   - Loads deployed addresses from `deployments/sepolia.json`.
+2. Security baseline setup
+   - Authorizes executors on hook.
+   - Configures demo pool key + fee tiers.
+3. Attack simulation (user perspective)
+   - Simulates user-facing attack window reset.
+4. Detection trigger
+   - Simulates callback-driven medium-risk mitigation.
+5. Mitigation execution
+   - Escalates to emergency-tier mitigation with pause/throttle windows.
+6. Outcome proof
+   - Reads final pool state and prints tier/fee/pause/throttle values.
+   - Prints tx hashes with Unichain Sepolia and Lasna URL slots for each phase.

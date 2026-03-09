@@ -53,6 +53,16 @@ contract HookSafetyFirewallHook is BaseHook, Owned {
         int24 lastTick;
     }
 
+    struct SwapSnapshot {
+        bytes32 poolId;
+        uint160 sqrtPriceX96;
+        int24 tick;
+        uint24 lpFee;
+        uint128 liquidity;
+        int128 amount0;
+        int128 amount1;
+    }
+
     mapping(bytes32 => PoolConfig) private poolConfigs;
     mapping(bytes32 => PoolState) private poolStates;
     mapping(address => bool) public executors;
@@ -225,66 +235,18 @@ contract HookSafetyFirewallHook is BaseHook, Owned {
         override
         returns (bytes4, int128)
     {
-        PoolId id = key.toId();
-        bytes32 poolId = PoolId.unwrap(id);
-
-        PoolConfig memory config = poolConfigs[poolId];
-        if (!config.exists) revert UnknownPool(poolId);
-
-        (uint160 sqrtPriceX96, int24 tick,, uint24 lpFee) = poolManager.getSlot0(id);
-        uint128 liquidity = poolManager.getLiquidity(id);
-
-        int128 amount0 = delta.amount0();
-        int128 amount1 = delta.amount1();
-
-        PoolState storage state = poolStates[poolId];
-
-        uint256 volume = RiskMath.absInt128(amount0) + RiskMath.absInt128(amount1);
-        uint128 emaVolume = state.emaVolume;
-        if (emaVolume == 0) {
-            emaVolume = uint128(volume);
-        } else {
-            emaVolume = uint128((uint256(emaVolume) * 7 + volume) / 8);
-        }
-        state.emaVolume = emaVolume;
-
-        uint16 priceDeviationBps = state.lastSqrtPriceX96 == 0
-            ? 0
-            : RiskMath.ratioBps(RiskMath.absDiff(uint256(sqrtPriceX96), uint256(state.lastSqrtPriceX96)), state.lastSqrtPriceX96);
-
-        uint16 volumeSpikeBps = RiskMath.ratioBps(volume, emaVolume == 0 ? 1 : uint256(emaVolume));
-
-        uint16 slippageAnomalyBps = RiskMath.clampBps(_tickDeltaBps(state.lastTick, tick));
-
-        uint256 imbalanceNumerator = RiskMath.absDiff(RiskMath.absInt128(amount0), RiskMath.absInt128(amount1));
-        uint16 liquidityImbalanceBps =
-            RiskMath.ratioBps(imbalanceNumerator, RiskMath.absInt128(amount0) + RiskMath.absInt128(amount1) + 1);
-
-        uint16 temporalCorrelationBps = _temporalCorrelation(state.lastSwapTimestamp);
-
-        uint16 mevHeuristicBps = _mevHeuristic(
-            priceDeviationBps,
-            volumeSpikeBps,
-            temporalCorrelationBps,
-            params.zeroForOne,
-            state.lastDirectionZeroForOne
+        SwapSnapshot memory snapshot = _loadSwapSnapshot(key, delta);
+        PoolConfig memory config = poolConfigs[snapshot.poolId];
+        if (!config.exists) revert UnknownPool(snapshot.poolId);
+        PoolState storage state = poolStates[snapshot.poolId];
+        uint16 localRisk = _computeLocalRisk(
+            state, params.zeroForOne, snapshot.amount0, snapshot.amount1, snapshot.sqrtPriceX96, snapshot.tick
         );
 
-        RiskMath.FeatureVector memory features = RiskMath.FeatureVector({
-            priceDeviationBps: priceDeviationBps,
-            volumeSpikeBps: volumeSpikeBps,
-            slippageAnomalyBps: slippageAnomalyBps,
-            liquidityImbalanceBps: liquidityImbalanceBps,
-            temporalCorrelationBps: temporalCorrelationBps,
-            mevHeuristicBps: mevHeuristicBps
-        });
-
-        uint16 localRisk = RiskMath.score(features, RiskMath.defaultWeights());
-
         state.sequence += 1;
-        state.lastSqrtPriceX96 = sqrtPriceX96;
-        state.lastTick = tick;
-        state.lastLiquidity = liquidity;
+        state.lastSqrtPriceX96 = snapshot.sqrtPriceX96;
+        state.lastTick = snapshot.tick;
+        state.lastLiquidity = snapshot.liquidity;
         state.lastSwapTimestamp = uint40(block.timestamp);
         state.lastDirectionZeroForOne = params.zeroForOne;
         state.lastLocalRisk = uint8(localRisk);
@@ -297,24 +259,110 @@ contract HookSafetyFirewallHook is BaseHook, Owned {
             _localThrottle(state, config);
         }
 
-        emit SecurityTelemetry(
-            poolId,
+        uint24 activeFeePips = key.fee.isDynamicFee() ? state.currentFeePips : snapshot.lpFee;
+        _emitTelemetry(
             sender,
+            snapshot,
             state.sequence,
-            uint64(block.timestamp),
-            uint64(block.number),
-            tick,
-            sqrtPriceX96,
-            liquidity,
-            amount0,
-            amount1,
             params.zeroForOne,
             params.amountSpecified,
-            key.fee.isDynamicFee() ? state.currentFeePips : lpFee,
-            uint8(localRisk)
+            activeFeePips,
+            localRisk
         );
 
         return (BaseHook.afterSwap.selector, 0);
+    }
+
+    function _loadSwapSnapshot(PoolKey calldata key, BalanceDelta delta) private view returns (SwapSnapshot memory snapshot) {
+        PoolId id = key.toId();
+        snapshot.poolId = PoolId.unwrap(id);
+        (snapshot.sqrtPriceX96, snapshot.tick,, snapshot.lpFee) = poolManager.getSlot0(id);
+        snapshot.liquidity = poolManager.getLiquidity(id);
+        snapshot.amount0 = delta.amount0();
+        snapshot.amount1 = delta.amount1();
+    }
+
+    function _computeLocalRisk(
+        PoolState storage state,
+        bool zeroForOne,
+        int128 amount0,
+        int128 amount1,
+        uint160 sqrtPriceX96,
+        int24 tick
+    ) private returns (uint16 localRisk) {
+        uint256 volume = RiskMath.absInt128(amount0) + RiskMath.absInt128(amount1);
+        uint128 emaVolume = state.emaVolume;
+
+        if (emaVolume == 0) {
+            emaVolume = uint128(volume);
+        } else {
+            emaVolume = uint128((uint256(emaVolume) * 7 + volume) / 8);
+        }
+        state.emaVolume = emaVolume;
+
+        RiskMath.FeatureVector memory features =
+            _deriveFeatures(state, amount0, amount1, sqrtPriceX96, tick, zeroForOne, volume, emaVolume);
+        return RiskMath.score(features, RiskMath.defaultWeights());
+    }
+
+    function _deriveFeatures(
+        PoolState storage state,
+        int128 amount0,
+        int128 amount1,
+        uint160 sqrtPriceX96,
+        int24 tick,
+        bool zeroForOne,
+        uint256 volume,
+        uint128 emaVolume
+    ) private view returns (RiskMath.FeatureVector memory features) {
+        features.priceDeviationBps = state.lastSqrtPriceX96 == 0
+            ? 0
+            : RiskMath.ratioBps(RiskMath.absDiff(uint256(sqrtPriceX96), uint256(state.lastSqrtPriceX96)), state.lastSqrtPriceX96);
+        features.volumeSpikeBps = RiskMath.ratioBps(volume, emaVolume == 0 ? 1 : uint256(emaVolume));
+        features.slippageAnomalyBps = RiskMath.clampBps(_tickDeltaBps(state.lastTick, tick));
+        features.liquidityImbalanceBps = _liquidityImbalance(amount0, amount1);
+        features.temporalCorrelationBps = _temporalCorrelation(state.lastSwapTimestamp);
+        features.mevHeuristicBps = _mevHeuristic(
+            features.priceDeviationBps,
+            features.volumeSpikeBps,
+            features.temporalCorrelationBps,
+            zeroForOne,
+            state.lastDirectionZeroForOne
+        );
+    }
+
+    function _liquidityImbalance(int128 amount0, int128 amount1) private pure returns (uint16) {
+        uint256 abs0 = RiskMath.absInt128(amount0);
+        uint256 abs1 = RiskMath.absInt128(amount1);
+        uint256 imbalanceNumerator = RiskMath.absDiff(abs0, abs1);
+        return RiskMath.ratioBps(imbalanceNumerator, abs0 + abs1 + 1);
+    }
+
+    function _emitTelemetry(
+        address sender,
+        SwapSnapshot memory snapshot,
+        uint64 sequence,
+        bool zeroForOne,
+        int256 amountSpecified,
+        uint24 activeFeePips,
+        uint16 localRisk
+    ) private {
+        emit SecurityTelemetry(
+            snapshot.poolId,
+            sender,
+            sequence,
+            uint64(block.timestamp),
+            uint64(block.number),
+            snapshot.tick,
+            snapshot.sqrtPriceX96,
+            snapshot.liquidity,
+            snapshot.amount0,
+            snapshot.amount1,
+            zeroForOne,
+            amountSpecified,
+            activeFeePips,
+            uint8(localRisk)
+        );
     }
 
     function _feeForTier(PoolConfig memory config, uint8 tier) private pure returns (uint24) {

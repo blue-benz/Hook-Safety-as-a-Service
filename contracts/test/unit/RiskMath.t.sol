@@ -49,4 +49,17 @@ contract RiskMathTest is Test {
         assertEq(RiskMath.ratioBps(25, 10), 10_000);
         assertEq(RiskMath.ratioBps(5, 10), 5_000);
     }
+
+    function testAbsInt256HandlesNegativeAndPositiveValues() public pure {
+        assertEq(RiskMath.absInt256(-123), 123);
+        assertEq(RiskMath.absInt256(456), 456);
+    }
+
+    function testRatioBpsLargeInputsFallbackPath() public pure {
+        uint256 numerator = type(uint256).max / 2;
+        uint256 denominator = numerator + 123_456;
+        uint16 ratio = RiskMath.ratioBps(numerator, denominator);
+        assertLe(ratio, 10_000);
+        assertGt(ratio, 0);
+    }
 }

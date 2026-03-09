@@ -32,6 +32,17 @@ contract HookSafetyReactive is AbstractReactive {
         bool initialized;
     }
 
+    struct Telemetry {
+        uint64 eventTimestamp;
+        int24 tick;
+        uint160 sqrtPriceX96;
+        uint128 liquidity;
+        int128 amount0;
+        int128 amount1;
+        bool zeroForOne;
+        uint8 localRisk;
+    }
+
     mapping(bytes32 => Baseline) public baselines;
 
     event RiskEvaluated(bytes32 indexed poolId, uint16 score, uint16 computedScore, uint8 localRisk);
@@ -45,6 +56,8 @@ contract HookSafetyReactive is AbstractReactive {
         uint40 pauseUntil,
         bytes32 evidenceHash
     );
+
+    error InvalidTelemetryData(uint256 length);
 
     constructor(
         address serviceAddress,
@@ -86,60 +99,99 @@ contract HookSafetyReactive is AbstractReactive {
         if (log.topic_0 != TELEMETRY_TOPIC_0) return;
 
         bytes32 poolId = bytes32(log.topic_1);
-
-        (
-            uint64 sequence,
-            uint64 eventTimestamp,
-            uint64 eventBlockNumber,
-            int24 tick,
-            uint160 sqrtPriceX96,
-            uint128 liquidity,
-            int128 amount0,
-            int128 amount1,
-            bool zeroForOne,
-            int256 amountSpecified,
-            uint24 activeFee,
-            uint8 localRisk
-        ) = abi.decode(log.data, (uint64, uint64, uint64, int24, uint160, uint128, int128, int128, bool, int256, uint24, uint8));
-
-        sequence;
-        eventBlockNumber;
-        amountSpecified;
-        activeFee;
-
-        uint256 volume = RiskMath.absInt128(amount0) + RiskMath.absInt128(amount1);
+        Telemetry memory telemetry = _decodeTelemetry(log.data);
+        uint256 volume = RiskMath.absInt128(telemetry.amount0) + RiskMath.absInt128(telemetry.amount1);
 
         Baseline storage baseline = baselines[poolId];
         Baseline memory snapshot = baseline;
 
         if (!snapshot.initialized) {
-            baseline.initialized = true;
-            baseline.emaPriceX96 = sqrtPriceX96;
-            baseline.emaVolume = uint128(volume);
-            baseline.emaLiquidity = liquidity;
-            baseline.lastTick = tick;
-            baseline.lastTimestamp = uint40(eventTimestamp);
+            _bootstrapBaseline(baseline, telemetry, volume);
             return;
         }
 
-        RiskMath.FeatureVector memory features =
-            _deriveFeatures(snapshot, eventTimestamp, tick, sqrtPriceX96, liquidity, volume, zeroForOne);
-        uint16 computedScore = RiskMath.score(features, RiskMath.defaultWeights());
-        uint16 score = uint16((uint256(computedScore) + uint256(localRisk)) / 2);
+        (uint16 computedScore, uint16 score) = _scoreAndRefreshBaseline(baseline, snapshot, telemetry, volume);
 
-        emit RiskEvaluated(poolId, score, computedScore, localRisk);
+        emit RiskEvaluated(poolId, score, computedScore, telemetry.localRisk);
+
+        (uint8 tier, uint40 throttleUntil, uint40 pauseUntil) = _mitigationFromScore(score);
+
+        if (tier == 0) return;
+
+        uint64 nonce = ++baseline.nonce;
+        _emitMitigation(log, poolId, score, tier, throttleUntil, pauseUntil, nonce);
+    }
+
+    function _decodeTelemetry(bytes calldata data) private pure returns (Telemetry memory telemetry) {
+        if (data.length != 384) revert InvalidTelemetryData(data.length);
+
+        uint256 eventTimestampWord;
+        int256 tickWord;
+        uint256 sqrtPriceWord;
+        uint256 liquidityWord;
+        int256 amount0Word;
+        int256 amount1Word;
+        uint256 zeroForOneWord;
+        uint256 localRiskWord;
+
+        assembly ("memory-safe") {
+            let ptr := data.offset
+            eventTimestampWord := calldataload(add(ptr, 32))
+            tickWord := calldataload(add(ptr, 96))
+            sqrtPriceWord := calldataload(add(ptr, 128))
+            liquidityWord := calldataload(add(ptr, 160))
+            amount0Word := calldataload(add(ptr, 192))
+            amount1Word := calldataload(add(ptr, 224))
+            zeroForOneWord := calldataload(add(ptr, 256))
+            localRiskWord := calldataload(add(ptr, 352))
+        }
+
+        telemetry.eventTimestamp = uint64(eventTimestampWord);
+        telemetry.tick = int24(tickWord);
+        telemetry.sqrtPriceX96 = uint160(sqrtPriceWord);
+        telemetry.liquidity = uint128(liquidityWord);
+        telemetry.amount0 = int128(amount0Word);
+        telemetry.amount1 = int128(amount1Word);
+        telemetry.zeroForOne = zeroForOneWord != 0;
+        telemetry.localRisk = uint8(localRiskWord);
+    }
+
+    function _bootstrapBaseline(Baseline storage baseline, Telemetry memory telemetry, uint256 volume) private {
+        baseline.initialized = true;
+        baseline.emaPriceX96 = telemetry.sqrtPriceX96;
+        baseline.emaVolume = uint128(volume);
+        baseline.emaLiquidity = telemetry.liquidity;
+        baseline.lastTick = telemetry.tick;
+        baseline.lastTimestamp = uint40(telemetry.eventTimestamp);
+    }
+
+    function _scoreAndRefreshBaseline(
+        Baseline storage baseline,
+        Baseline memory snapshot,
+        Telemetry memory telemetry,
+        uint256 volume
+    ) private returns (uint16 computedScore, uint16 score) {
+        RiskMath.FeatureVector memory features = _deriveFeatures(
+            snapshot,
+            telemetry.eventTimestamp,
+            telemetry.tick,
+            telemetry.sqrtPriceX96,
+            telemetry.liquidity,
+            volume,
+            telemetry.zeroForOne
+        );
+        computedScore = RiskMath.score(features, RiskMath.defaultWeights());
+        score = uint16((uint256(computedScore) + uint256(telemetry.localRisk)) / 2);
 
         // EMA update after scoring to preserve causality.
-        baseline.emaPriceX96 = uint160((uint256(snapshot.emaPriceX96) * 7 + uint256(sqrtPriceX96)) / 8);
+        baseline.emaPriceX96 = uint160((uint256(snapshot.emaPriceX96) * 7 + uint256(telemetry.sqrtPriceX96)) / 8);
         baseline.emaVolume = uint128((uint256(snapshot.emaVolume) * 7 + volume) / 8);
-        baseline.emaLiquidity = uint128((uint256(snapshot.emaLiquidity) * 7 + uint256(liquidity)) / 8);
-        baseline.lastTick = tick;
-        baseline.lastTimestamp = uint40(eventTimestamp);
+        baseline.emaLiquidity = uint128((uint256(snapshot.emaLiquidity) * 7 + uint256(telemetry.liquidity)) / 8);
+        baseline.lastTick = telemetry.tick;
+        baseline.lastTimestamp = uint40(telemetry.eventTimestamp);
+    }
 
-        uint8 tier;
-        uint40 throttleUntil;
-        uint40 pauseUntil;
-
+    function _mitigationFromScore(uint16 score) private view returns (uint8 tier, uint40 throttleUntil, uint40 pauseUntil) {
         if (score >= highThreshold) {
             tier = 2;
             throttleUntil = uint40(block.timestamp + 180);
@@ -149,11 +201,17 @@ contract HookSafetyReactive is AbstractReactive {
             throttleUntil = uint40(block.timestamp + 45);
             pauseUntil = 0;
         }
+    }
 
-        if (tier == 0) return;
-
-        uint64 nonce = ++baseline.nonce;
-
+    function _emitMitigation(
+        LogRecord calldata log,
+        bytes32 poolId,
+        uint16 score,
+        uint8 tier,
+        uint40 throttleUntil,
+        uint40 pauseUntil,
+        uint64 nonce
+    ) private {
         bytes32 evidenceHash = keccak256(
             abi.encode(log.chain_id, log._contract, log.block_number, log.tx_hash, log.log_index, poolId, score, tier, nonce)
         );
@@ -183,32 +241,33 @@ contract HookSafetyReactive is AbstractReactive {
         uint256 volume,
         bool zeroForOne
     ) private pure returns (RiskMath.FeatureVector memory features) {
-        uint16 priceDeviationBps =
+        features.priceDeviationBps =
             RiskMath.ratioBps(RiskMath.absDiff(uint256(sqrtPriceX96), uint256(baseline.emaPriceX96)), baseline.emaPriceX96);
-
-        uint16 volumeSpikeBps = RiskMath.ratioBps(volume, baseline.emaVolume == 0 ? 1 : uint256(baseline.emaVolume));
-
-        int256 tickDiff = int256(tick) - int256(baseline.lastTick);
-        if (tickDiff < 0) tickDiff = -tickDiff;
-        uint16 slippageAnomalyBps = RiskMath.clampBps(uint256(tickDiff) * 20);
-
-        uint16 liquidityImbalanceBps = RiskMath.ratioBps(
-            RiskMath.absDiff(uint256(liquidity), uint256(baseline.emaLiquidity)),
-            baseline.emaLiquidity == 0 ? 1 : uint256(baseline.emaLiquidity)
+        features.volumeSpikeBps = RiskMath.ratioBps(volume, baseline.emaVolume == 0 ? 1 : uint256(baseline.emaVolume));
+        features.slippageAnomalyBps = _slippageAnomaly(baseline.lastTick, tick);
+        features.liquidityImbalanceBps = _liquidityImbalance(baseline.emaLiquidity, liquidity);
+        features.temporalCorrelationBps = _temporalCorrelation(eventTimestamp, baseline.lastTimestamp);
+        features.mevHeuristicBps = _mevHeuristic(
+            features.priceDeviationBps,
+            features.volumeSpikeBps,
+            features.temporalCorrelationBps,
+            zeroForOne,
+            baseline.lastTick,
+            tick
         );
+    }
 
-        uint16 temporalCorrelationBps = _temporalCorrelation(eventTimestamp, baseline.lastTimestamp);
-        uint16 mevHeuristicBps =
-            _mevHeuristic(priceDeviationBps, volumeSpikeBps, temporalCorrelationBps, zeroForOne, baseline.lastTick, tick);
+    function _slippageAnomaly(int24 previousTick, int24 currentTick) private pure returns (uint16) {
+        int256 tickDiff = int256(currentTick) - int256(previousTick);
+        if (tickDiff < 0) tickDiff = -tickDiff;
+        return RiskMath.clampBps(uint256(tickDiff) * 20);
+    }
 
-        features = RiskMath.FeatureVector({
-            priceDeviationBps: priceDeviationBps,
-            volumeSpikeBps: volumeSpikeBps,
-            slippageAnomalyBps: slippageAnomalyBps,
-            liquidityImbalanceBps: liquidityImbalanceBps,
-            temporalCorrelationBps: temporalCorrelationBps,
-            mevHeuristicBps: mevHeuristicBps
-        });
+    function _liquidityImbalance(uint128 baselineLiquidity, uint128 liquidity) private pure returns (uint16) {
+        return RiskMath.ratioBps(
+            RiskMath.absDiff(uint256(liquidity), uint256(baselineLiquidity)),
+            baselineLiquidity == 0 ? 1 : uint256(baselineLiquidity)
+        );
     }
 
     function _temporalCorrelation(uint64 currentTimestamp, uint40 previousTimestamp) private pure returns (uint16) {

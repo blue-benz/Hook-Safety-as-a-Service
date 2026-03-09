@@ -1,4 +1,4 @@
-.PHONY: bootstrap test coverage demo-local demo-sepolia build frontend-build
+.PHONY: bootstrap test coverage demo-local demo-sepolia build frontend-build deploy-sepolia
 
 bootstrap:
 	./scripts/bootstrap.sh
@@ -10,7 +10,10 @@ test:
 	forge test -vv
 
 coverage:
-	forge coverage --ir-minimum --report summary
+	./scripts/check-coverage.sh
+
+deploy-sepolia:
+	./scripts/deploy/unichain.sh
 
 frontend-build:
 	npm --workspace frontend run build

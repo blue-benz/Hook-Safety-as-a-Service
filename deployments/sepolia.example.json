@@ -1,15 +1,45 @@
 {
-  "baseSepolia": {
+  "network": "unichain-sepolia",
+  "chainId": 1301,
+  "explorers": {
+    "unichainSepolia": "https://sepolia.uniscan.xyz",
+    "lasna": "https://lasna.reactscan.net"
+  },
+  "unichainSepolia": {
     "hook": "0x0000000000000000000000000000000000000000",
+    "executor": "0x0000000000000000000000000000000000000000",
+    "demoExecutor": "0x0000000000000000000000000000000000000000",
+    "poolId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "poolKey": {
+      "currency0": "0x1111111111111111111111111111111111111111",
+      "currency1": "0x2222222222222222222222222222222222222222",
+      "fee": 8388608,
+      "tickSpacing": 60,
+      "hooks": "0x0000000000000000000000000000000000000000"
+    },
     "tx": {
+      "deployHook": "0x",
+      "deployExecutor": "0x",
+      "deployDemoExecutor": "0x",
+      "authorizeExecutor": "0x",
+      "authorizeDemoExecutor": "0x",
+      "configurePool": "0x",
       "attack": "0x",
+      "detection": "0x",
       "mitigation": "0x"
+    },
+    "outcome": {
+      "tier": 0,
+      "feePips": 0,
+      "pauseUntil": 0,
+      "throttleUntil": 0
     }
   },
-  "lasna": {
-    "reactive": "0x0000000000000000000000000000000000000000",
+  "reactiveLasna": {
+    "reactive": null,
+    "status": "not_attempted",
     "tx": {
-      "detection": "0x"
+      "deployReactive": null
     }
   }
 }
