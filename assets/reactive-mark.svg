@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Reactive mark">
+  <defs>
+    <linearGradient id="rGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#22c55e"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="48" fill="#0b1120"/>
+  <circle cx="82" cy="128" r="22" fill="#67e8f9"/>
+  <circle cx="174" cy="82" r="18" fill="#34d399"/>
+  <circle cx="174" cy="174" r="18" fill="#22d3ee"/>
+  <path d="M102 128h52M164 92l-26 20M164 164l-26-20" stroke="url(#rGrad)" stroke-width="12" stroke-linecap="round"/>
+  <path d="M64 208c8-16 20-24 36-24h56c16 0 28 8 36 24" fill="none" stroke="#1f2937" stroke-width="8"/>
+</svg>
