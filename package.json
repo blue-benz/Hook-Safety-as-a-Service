@@ -1,0 +1,30 @@
+{
+  "name": "hook-safety-as-a-service",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "shared"
+  ],
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "scripts": {
+    "bootstrap": "bash scripts/bootstrap.sh",
+    "ci:deps": "bash scripts/verify-deps.sh",
+    "contracts:build": "forge build",
+    "contracts:test": "forge test -vv",
+    "contracts:coverage": "forge coverage --ir-minimum --report summary",
+    "contracts:fuzz": "forge test --match-path 'contracts/test/fuzz/*' -vv",
+    "contracts:integration": "forge test --match-path 'contracts/test/integration/*' -vv",
+    "abi:export": "bash scripts/export-abis.sh",
+    "frontend:dev": "npm --workspace frontend run dev",
+    "frontend:build": "npm --workspace frontend run build",
+    "demo-local": "bash scripts/demo/local.sh",
+    "demo-sepolia": "bash scripts/demo/sepolia.sh",
+    "format": "prettier --check \"README.md\" \"spec.md\" \"SECURITY.md\" \"CONTRIBUTING.md\" \"docs/**/*.md\" \"frontend/src/**/*.{ts,tsx,css}\" \"frontend/index.html\" \"shared/**/*.ts\" \".github/workflows/*.yml\""
+  },
+  "devDependencies": {
+    "prettier": "3.5.3"
+  }
+}
