@@ -1,0 +1,12 @@
+{
+  "baseSepolia": {
+    "chainId": 84532,
+    "explorer": "https://sepolia.basescan.org",
+    "callbackProxy": "0xa6eA49Ed671B8a4dfCDd34E36b7a75Ac79B8A5a6"
+  },
+  "lasna": {
+    "chainId": 5318007,
+    "explorer": "https://lasna.network",
+    "callbackProxy": "0x0000000000000000000000000000000000fffFfF"
+  }
+}
