@@ -1,0 +1,20 @@
+[profile.default]
+bytecode_hash = "none"
+evm_version = "cancun"
+ffi = true
+fs_permissions = [
+  {access = "read-write", path = ".forge-snapshots/"},
+  {access = "read-write", path = "deployments/"},
+  {access = "read", path = "context/"},
+]
+libs = ["lib"]
+out = "out"
+solc_version = "0.8.30"
+script = "scripts/foundry"
+src = "contracts/src"
+test = "contracts/test"
+via_ir = true
+
+[lint]
+exclude_lints = ["screaming-snake-case-immutable", "screaming-snake-case-const"]
+lint_on_build = false
