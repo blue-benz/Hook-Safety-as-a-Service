@@ -16,4 +16,6 @@ node_modules/
 frontend/dist/
 *.tsbuildinfo
 frontend/
+lib/
 
+context/

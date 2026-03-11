@@ -12,7 +12,7 @@ contract HookSafetyReactive is AbstractReactive {
 
     // keccak256("SecurityTelemetry(bytes32,address,uint64,uint64,uint64,int24,uint160,uint128,int128,int128,bool,int256,uint24,uint8)")
     uint256 public constant TELEMETRY_TOPIC_0 =
-        0xdd031e33fe2f8df6f3eeaf6f3f7700b019972efff1840c4fe7f36e56d82f6aa0;
+        0x6c9834cf0ad702ad4cc765c956cdead93b1a6ce4b8606ad58afe8e27cc343270;
 
     uint16 public mediumThreshold;
     uint16 public highThreshold;
@@ -125,35 +125,25 @@ contract HookSafetyReactive is AbstractReactive {
     function _decodeTelemetry(bytes calldata data) private pure returns (Telemetry memory telemetry) {
         if (data.length != 384) revert InvalidTelemetryData(data.length);
 
-        uint256 eventTimestampWord;
-        int256 tickWord;
-        uint256 sqrtPriceWord;
-        uint256 liquidityWord;
-        int256 amount0Word;
-        int256 amount1Word;
-        uint256 zeroForOneWord;
-        uint256 localRiskWord;
+        (
+            ,
+            uint64 eventTimestamp_,
+            ,
+            int24 tick_,
+            uint160 sqrtPriceX96_,
+            uint128 liquidity_
+        ) = abi.decode(data[:192], (uint64, uint64, uint64, int24, uint160, uint128));
+        (int128 amount0_, int128 amount1_, bool zeroForOne_,,, uint8 localRisk_) =
+            abi.decode(data[192:], (int128, int128, bool, int256, uint24, uint8));
 
-        assembly ("memory-safe") {
-            let ptr := data.offset
-            eventTimestampWord := calldataload(add(ptr, 32))
-            tickWord := calldataload(add(ptr, 96))
-            sqrtPriceWord := calldataload(add(ptr, 128))
-            liquidityWord := calldataload(add(ptr, 160))
-            amount0Word := calldataload(add(ptr, 192))
-            amount1Word := calldataload(add(ptr, 224))
-            zeroForOneWord := calldataload(add(ptr, 256))
-            localRiskWord := calldataload(add(ptr, 352))
-        }
-
-        telemetry.eventTimestamp = uint64(eventTimestampWord);
-        telemetry.tick = int24(tickWord);
-        telemetry.sqrtPriceX96 = uint160(sqrtPriceWord);
-        telemetry.liquidity = uint128(liquidityWord);
-        telemetry.amount0 = int128(amount0Word);
-        telemetry.amount1 = int128(amount1Word);
-        telemetry.zeroForOne = zeroForOneWord != 0;
-        telemetry.localRisk = uint8(localRiskWord);
+        telemetry.eventTimestamp = eventTimestamp_;
+        telemetry.tick = tick_;
+        telemetry.sqrtPriceX96 = sqrtPriceX96_;
+        telemetry.liquidity = liquidity_;
+        telemetry.amount0 = amount0_;
+        telemetry.amount1 = amount1_;
+        telemetry.zeroForOne = zeroForOne_;
+        telemetry.localRisk = localRisk_;
     }
 
     function _bootstrapBaseline(Baseline storage baseline, Telemetry memory telemetry, uint256 volume) private {

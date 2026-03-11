@@ -19,7 +19,7 @@ abstract contract AbstractReactive is IReactive, AbstractPayer {
     constructor() {
         vendor = service = SERVICE_ADDR;
         addAuthorizedSender(address(SERVICE_ADDR));
-        detectVm();
+        vm = address(SERVICE_ADDR).code.length == 0;
     }
 
     modifier rnOnly() {
@@ -32,11 +32,4 @@ abstract contract AbstractReactive is IReactive, AbstractPayer {
         _;
     }
 
-    function detectVm() internal {
-        uint256 size;
-        assembly ("memory-safe") {
-            size := extcodesize(0x0000000000000000000000000000000000fffFfF)
-        }
-        vm = size == 0;
-    }
 }

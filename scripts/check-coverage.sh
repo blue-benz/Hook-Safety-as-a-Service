@@ -7,6 +7,7 @@ LCOV_FILE="$ROOT_DIR/coverage/lcov-src-noir.info"
 mkdir -p "$ROOT_DIR/coverage"
 
 if ! FOUNDRY_OFFLINE="${FOUNDRY_OFFLINE:-true}" forge coverage \
+  --ir-minimum \
   --exclude-tests \
   --no-match-coverage "scripts/" \
   --report lcov \

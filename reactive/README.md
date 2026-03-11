@@ -10,10 +10,12 @@ This folder contains Reactive-network-specific deployment and operations context
 - `EXECUTOR_ADDRESS`
 
 ## Testnet Targets
+- Unichain Sepolia: `1301`
 - Base Sepolia: `84532`
 - Reactive Lasna: `5318007`
 
 Callback proxy reference from local context docs:
+- Unichain Sepolia callback proxy: `0x9299472A6399Fd1027ebF067571Eb3e3D7837FC4`
 - Base Sepolia callback proxy: `0xa6eA49Ed671B8a4dfCDd34E36b7a75Ac79B8A5a6`
 - Lasna system/callback proxy: `0x0000000000000000000000000000000000fffFfF`
 

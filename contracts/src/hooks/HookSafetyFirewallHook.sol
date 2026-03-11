@@ -63,6 +63,23 @@ contract HookSafetyFirewallHook is BaseHook, Owned {
         int128 amount1;
     }
 
+    struct TelemetryEnvelope {
+        bytes32 poolId;
+        address sender;
+        uint64 sequence;
+        uint64 timestamp;
+        uint64 blockNumber;
+        int24 tick;
+        uint160 sqrtPriceX96;
+        uint128 liquidity;
+        int128 amount0;
+        int128 amount1;
+        bool zeroForOne;
+        int256 amountSpecified;
+        uint24 activeFeePips;
+        uint8 localRiskScore;
+    }
+
     mapping(bytes32 => PoolConfig) private poolConfigs;
     mapping(bytes32 => PoolState) private poolStates;
     mapping(address => bool) public executors;
@@ -184,9 +201,10 @@ contract HookSafetyFirewallHook is BaseHook, Owned {
         PoolConfig memory config = poolConfigs[poolId];
         if (!config.exists) revert UnknownPool(poolId);
 
+        uint64 effectiveTimestamp = eventTimestamp == 0 ? uint64(block.timestamp) : eventTimestamp;
         PoolState storage state = poolStates[poolId];
         state.sequence += 1;
-        state.lastSwapTimestamp = uint40(eventTimestamp == 0 ? block.timestamp : eventTimestamp);
+        state.lastSwapTimestamp = uint40(effectiveTimestamp);
         state.lastSqrtPriceX96 = sqrtPriceX96;
         state.lastTick = tick;
         state.lastLiquidity = liquidity;
@@ -198,22 +216,22 @@ contract HookSafetyFirewallHook is BaseHook, Owned {
             activeFeePips = state.currentFeePips;
         }
 
-        emit SecurityTelemetry(
-            poolId,
-            msg.sender,
-            state.sequence,
-            eventTimestamp == 0 ? uint64(block.timestamp) : eventTimestamp,
-            uint64(block.number),
-            tick,
-            sqrtPriceX96,
-            liquidity,
-            amount0,
-            amount1,
-            zeroForOne,
-            amountSpecified,
-            activeFeePips,
-            localRiskScore
-        );
+        TelemetryEnvelope memory telemetry;
+        telemetry.poolId = poolId;
+        telemetry.sender = msg.sender;
+        telemetry.sequence = state.sequence;
+        telemetry.timestamp = effectiveTimestamp;
+        telemetry.blockNumber = uint64(block.number);
+        telemetry.tick = tick;
+        telemetry.sqrtPriceX96 = sqrtPriceX96;
+        telemetry.liquidity = liquidity;
+        telemetry.amount0 = amount0;
+        telemetry.amount1 = amount1;
+        telemetry.zeroForOne = zeroForOne;
+        telemetry.amountSpecified = amountSpecified;
+        telemetry.activeFeePips = activeFeePips;
+        telemetry.localRiskScore = localRiskScore;
+        _emitSecurityTelemetry(telemetry);
     }
 
     function applyMitigation(
@@ -395,21 +413,40 @@ contract HookSafetyFirewallHook is BaseHook, Owned {
         uint24 activeFeePips,
         uint16 localRisk
     ) private {
+        TelemetryEnvelope memory telemetry;
+        telemetry.poolId = snapshot.poolId;
+        telemetry.sender = sender;
+        telemetry.sequence = sequence;
+        telemetry.timestamp = uint64(block.timestamp);
+        telemetry.blockNumber = uint64(block.number);
+        telemetry.tick = snapshot.tick;
+        telemetry.sqrtPriceX96 = snapshot.sqrtPriceX96;
+        telemetry.liquidity = snapshot.liquidity;
+        telemetry.amount0 = snapshot.amount0;
+        telemetry.amount1 = snapshot.amount1;
+        telemetry.zeroForOne = zeroForOne;
+        telemetry.amountSpecified = amountSpecified;
+        telemetry.activeFeePips = activeFeePips;
+        telemetry.localRiskScore = uint8(localRisk);
+        _emitSecurityTelemetry(telemetry);
+    }
+
+    function _emitSecurityTelemetry(TelemetryEnvelope memory telemetry) private {
         emit SecurityTelemetry(
-            snapshot.poolId,
-            sender,
-            sequence,
-            uint64(block.timestamp),
-            uint64(block.number),
-            snapshot.tick,
-            snapshot.sqrtPriceX96,
-            snapshot.liquidity,
-            snapshot.amount0,
-            snapshot.amount1,
-            zeroForOne,
-            amountSpecified,
-            activeFeePips,
-            uint8(localRisk)
+            telemetry.poolId,
+            telemetry.sender,
+            telemetry.sequence,
+            telemetry.timestamp,
+            telemetry.blockNumber,
+            telemetry.tick,
+            telemetry.sqrtPriceX96,
+            telemetry.liquidity,
+            telemetry.amount0,
+            telemetry.amount1,
+            telemetry.zeroForOne,
+            telemetry.amountSpecified,
+            telemetry.activeFeePips,
+            telemetry.localRiskScore
         );
     }
 

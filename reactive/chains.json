@@ -1,4 +1,9 @@
 {
+  "unichainSepolia": {
+    "chainId": 1301,
+    "explorer": "https://sepolia.uniscan.xyz",
+    "callbackProxy": "0x9299472A6399Fd1027ebF067571Eb3e3D7837FC4"
+  },
   "baseSepolia": {
     "chainId": 84532,
     "explorer": "https://sepolia.basescan.org",
@@ -6,7 +11,7 @@
   },
   "lasna": {
     "chainId": 5318007,
-    "explorer": "https://lasna.network",
+    "explorer": "https://lasna.reactscan.net",
     "callbackProxy": "0x0000000000000000000000000000000000fffFfF"
   }
 }
