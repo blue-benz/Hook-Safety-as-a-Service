@@ -1,4 +1,4 @@
-.PHONY: bootstrap test coverage demo-local demo-sepolia build frontend-build deploy-sepolia
+.PHONY: bootstrap test coverage demo-local demo-sepolia demo-sepolia-live-reactive build frontend-build deploy-sepolia
 
 bootstrap:
 	./scripts/bootstrap.sh
@@ -23,3 +23,6 @@ demo-local:
 
 demo-sepolia:
 	./scripts/demo/sepolia.sh
+
+demo-sepolia-live-reactive:
+	./scripts/demo/sepolia-live-reactive.sh

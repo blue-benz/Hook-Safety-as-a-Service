@@ -130,17 +130,15 @@ Source files:
 
 | Item              | Network          | Value                                                                | Explorer URL                                                                                        |
 | ----------------- | ---------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Security Hook     | Unichain Sepolia | `0x410957D5dC016D922DfC37f6Efb6EA2F18d3c0C0`                         | `https://sepolia.uniscan.xyz/address/0x410957D5dC016D922DfC37f6Efb6EA2F18d3c0C0`                    |
-| Security Executor | Unichain Sepolia | `0xe2095ba6959E6eEcf67A5a3d3e9b60238AB27C22`                         | `https://sepolia.uniscan.xyz/address/0xe2095ba6959E6eEcf67A5a3d3e9b60238AB27C22`                    |
-| Demo Executor     | Unichain Sepolia | `0xbefCFAEE2094e8c8aF8ECFc77813edE4BDd01262`                         | `https://sepolia.uniscan.xyz/address/0xbefCFAEE2094e8c8aF8ECFc77813edE4BDd01262`                    |
-| Reactive Contract | Lasna            | `0x513776bcabab7198c91d6ac749933b62f3ee3a15`                         | `https://lasna.reactscan.net/address/0x513776bcabab7198c91d6ac749933b62f3ee3a15`                           |
-| Reactive Deploy Tx| Lasna            | `0xb7ebd362eb577c4eea087fea6d47673d7ab9e83552cdc7a1e3e800059ea011df` | `https://lasna.reactscan.net/tx/0xb7ebd362eb577c4eea087fea6d47673d7ab9e83552cdc7a1e3e800059ea011df`       |
-| Authorize Executor Tx | Unichain Sepolia | `0xc32a52f5a3fd58e7384287cd07a80b8ff7d43282878ae48317475490be684c27` | `https://sepolia.uniscan.xyz/tx/0xc32a52f5a3fd58e7384287cd07a80b8ff7d43282878ae48317475490be684c27` |
-| Authorize Demo Tx | Unichain Sepolia | `0x003b80ec7a7997a5992693cf7da5ca8b0fe5c0176d2ca29ec61ffea946e80daf` | `https://sepolia.uniscan.xyz/tx/0x003b80ec7a7997a5992693cf7da5ca8b0fe5c0176d2ca29ec61ffea946e80daf` |
-| Configure Pool Tx | Unichain Sepolia | `0xadc58c86caf8110e5a9cdbd3bb89f5b59a5f0518f142723294b49b930b831732` | `https://sepolia.uniscan.xyz/tx/0xadc58c86caf8110e5a9cdbd3bb89f5b59a5f0518f142723294b49b930b831732` |
-| Attack Tx         | Unichain Sepolia | `0x660eb4488d4feb56e454415b177fbeb657e70b1844d69df098189183a667167c` | `https://sepolia.uniscan.xyz/tx/0x660eb4488d4feb56e454415b177fbeb657e70b1844d69df098189183a667167c` |
-| Detection Tx      | Unichain Sepolia | `0x50bf5d0caec71743ddacd2c9474d2d177728e6f04fecbb5a14cc9ecb9478266c` | `https://sepolia.uniscan.xyz/tx/0x50bf5d0caec71743ddacd2c9474d2d177728e6f04fecbb5a14cc9ecb9478266c` |
-| Mitigation Tx     | Unichain Sepolia | `0x66f5209ae1a620ea000b572e30bf9eb715adfe09d006755df404ec3485178b2c` | `https://sepolia.uniscan.xyz/tx/0x66f5209ae1a620ea000b572e30bf9eb715adfe09d006755df404ec3485178b2c` |
+| Security Hook     | Unichain Sepolia | `0xfFb0f7AF7Ce0Dc1049fDc8fA25910299fd7480c0`                         | `https://sepolia.uniscan.xyz/address/0xfFb0f7AF7Ce0Dc1049fDc8fA25910299fd7480c0`                    |
+| Security Executor | Unichain Sepolia | `0x9dBF31FFDdDcb68A1b39f634Dbf94Db20EF93a1F`                         | `https://sepolia.uniscan.xyz/address/0x9dBF31FFDdDcb68A1b39f634Dbf94Db20EF93a1F`                    |
+| Demo Executor     | Unichain Sepolia | `0x63D36DD4a3735946Eb0544a2e3D1B593406f0fb5`                         | `https://sepolia.uniscan.xyz/address/0x63D36DD4a3735946Eb0544a2e3D1B593406f0fb5`                    |
+| Reactive Contract | Lasna            | `0x8190D9D73Df94756687bF1AEe6E43d41d261D3a6`                         | `https://lasna.reactscan.net/address/0x8190D9D73Df94756687bF1AEe6E43d41d261D3a6`                    |
+| Reactive Deploy Tx| Lasna            | `0x6a8c357997dcca537d4fcb82db312c966444b290b6e8a5bb871146db2ff36dc6` | `https://lasna.reactscan.net/tx/0x6a8c357997dcca537d4fcb82db312c966444b290b6e8a5bb871146db2ff36dc6` |
+| Reactive Fund Tx  | Lasna            | `0x49170d35d581c419b7acaf3b81d3d83b6bf212727a484d354be62f20ea8b8015` | `https://lasna.reactscan.net/tx/0x49170d35d581c419b7acaf3b81d3d83b6bf212727a484d354be62f20ea8b8015` |
+| Deploy Hook Tx    | Unichain Sepolia | `0x489f102a971ad4cbe45f3085cf06068242739fedfb19ef0331d2a64d78954c05` | `https://sepolia.uniscan.xyz/tx/0x489f102a971ad4cbe45f3085cf06068242739fedfb19ef0331d2a64d78954c05` |
+| Deploy Executor Tx| Unichain Sepolia | `0x11d709996e00c3fa4563ed01b6f9c6a9fd19720ce30972a298f6586340522a98` | `https://sepolia.uniscan.xyz/tx/0x11d709996e00c3fa4563ed01b6f9c6a9fd19720ce30972a298f6586340522a98` |
+| Deploy Demo Tx    | Unichain Sepolia | `0xb31a0d6bd9295d0fd3b6a35bcc083833a19af5ea8fd209e7bef478eea37c1edb` | `https://sepolia.uniscan.xyz/tx/0xb31a0d6bd9295d0fd3b6a35bcc083833a19af5ea8fd209e7bef478eea37c1edb` |
 
 ## Demo Run (With Tx URL Output)
 
@@ -149,6 +147,7 @@ Source files:
 ```bash
 make demo-local
 make demo-sepolia
+make demo-sepolia-live-reactive
 make deploy-sepolia
 ```
 
@@ -157,9 +156,10 @@ Equivalent npm commands:
 ```bash
 npm run demo-local
 npm run demo-sepolia
+npm run demo-sepolia-live-reactive
 ```
 
-### Latest demo output (`scripts/demo/sepolia.sh`)
+### Latest simulated incident demo (`scripts/demo/sepolia.sh`)
 
 ```text
 [Phase 0/5] Resolve deployments
@@ -182,6 +182,45 @@ Mitigation Execution
 UnichainSepolia: https://sepolia.uniscan.xyz/tx/0x66f5209ae1a620ea000b572e30bf9eb715adfe09d006755df404ec3485178b2c
 ```
 
+### Latest strict live path (`scripts/demo/sepolia-live-reactive.sh`)
+
+```text
+[Phase 0/6] Resolve deployments
+[Phase 1/6] Baseline setup
+[Phase 1.5/6] Allow Reactive subscription to settle
+[Phase 2/6] Emit baseline telemetry
+[Phase 3/6] Emit anomalous telemetry
+[Phase 4/6] Await Reactive processing on Lasna + callback on Unichain
+[Phase 5/6] Verify destination protection state
+[Phase 6/6] Persist demo artifacts
+
+Authorize executor:
+UnichainSepolia: https://sepolia.uniscan.xyz/tx/0xe152fdddcc02105fb74e63c0db639fd2fdaa7a0c53f6c740e4dba2d72b332203
+
+Configure pool:
+UnichainSepolia: https://sepolia.uniscan.xyz/tx/0xcac52fe50c425c1c94a097e0250343c4123b248a80104bef6b0623a3add98cfa
+
+Baseline telemetry:
+UnichainSepolia: https://sepolia.uniscan.xyz/tx/0x88ff38d5bd0d2d89d622945bf154f8a10993996e97dfffc7d43a647ac5d03f58
+
+Anomalous telemetry:
+UnichainSepolia: https://sepolia.uniscan.xyz/tx/0x110a379b1a0ab21b0313cc2a0ade080540fe2b69d05ba12ffef8eb5e04153dc7
+
+Retry anomaly:
+UnichainSepolia: https://sepolia.uniscan.xyz/tx/0xb9620a3fe82c89b7f46ec04c29d95fce2d0a7bb76e10e8128f4edd47c6fe5f1d
+
+Lasna reactive tx:
+N/A (not observed in polling window)
+
+Unichain callback tx:
+N/A (not observed in polling window)
+```
+
+Assumptions / TBD:
+
+- Reactive public testnet docs should be revalidated for Unichain Sepolia (`chainId=1301`) support before judging strict live callback expectations on this route.
+- If strict `event -> react -> callback` proof is mandatory per incident, run the same path on a currently listed Reactive-supported origin/destination testnet pair.
+
 ## Command to Run the System Scripts
 
 ```bash
@@ -192,6 +231,7 @@ npm run contracts:test
 make deploy-sepolia
 make demo-local
 make demo-sepolia
+make demo-sepolia-live-reactive
 ```
 
 ## Test Coverage and Proof

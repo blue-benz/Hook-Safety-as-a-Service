@@ -168,6 +168,54 @@ contract HookSafetyFirewallHook is BaseHook, Owned {
         state.currentFeePips = config.baseFeePips;
     }
 
+    function emitTelemetryForDemo(
+        bytes32 poolId,
+        uint64 eventTimestamp,
+        int24 tick,
+        uint160 sqrtPriceX96,
+        uint128 liquidity,
+        int128 amount0,
+        int128 amount1,
+        bool zeroForOne,
+        int256 amountSpecified,
+        uint24 activeFeePips,
+        uint8 localRiskScore
+    ) external onlyOwner {
+        PoolConfig memory config = poolConfigs[poolId];
+        if (!config.exists) revert UnknownPool(poolId);
+
+        PoolState storage state = poolStates[poolId];
+        state.sequence += 1;
+        state.lastSwapTimestamp = uint40(eventTimestamp == 0 ? block.timestamp : eventTimestamp);
+        state.lastSqrtPriceX96 = sqrtPriceX96;
+        state.lastTick = tick;
+        state.lastLiquidity = liquidity;
+        state.lastDirectionZeroForOne = zeroForOne;
+        state.lastLocalRisk = localRiskScore;
+
+        if (state.currentFeePips == 0) state.currentFeePips = config.baseFeePips;
+        if (activeFeePips == 0) {
+            activeFeePips = state.currentFeePips;
+        }
+
+        emit SecurityTelemetry(
+            poolId,
+            msg.sender,
+            state.sequence,
+            eventTimestamp == 0 ? uint64(block.timestamp) : eventTimestamp,
+            uint64(block.number),
+            tick,
+            sqrtPriceX96,
+            liquidity,
+            amount0,
+            amount1,
+            zeroForOne,
+            amountSpecified,
+            activeFeePips,
+            localRiskScore
+        );
+    }
+
     function applyMitigation(
         bytes32 poolId,
         uint8 tier,

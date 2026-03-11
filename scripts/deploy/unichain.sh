@@ -40,11 +40,14 @@ HIGH_THRESHOLD="${HIGH_THRESHOLD:-80}"
 
 UNICHAIN_EXPLORER_BASE="${UNICHAIN_EXPLORER_BASE:-https://sepolia.uniscan.xyz}"
 LASNA_EXPLORER_BASE="${LASNA_EXPLORER_BASE:-https://lasna.reactscan.net}"
+FORCE_REDEPLOY="${FORCE_REDEPLOY:-false}"
 
 DEMO_CURRENCY0="${DEMO_CURRENCY0:-0x1111111111111111111111111111111111111111}"
 DEMO_CURRENCY1="${DEMO_CURRENCY1:-0x2222222222222222222222222222222222222222}"
 DEMO_TICK_SPACING="${DEMO_TICK_SPACING:-60}"
 DYNAMIC_FEE_FLAG="${DYNAMIC_FEE_FLAG:-8388608}"
+TX_TIMEOUT_SECONDS="${TX_TIMEOUT_SECONDS:-300}"
+REACTIVE_TARGET_BALANCE_WEI="${REACTIVE_TARGET_BALANCE_WEI:-100000000000000000}"
 
 if [[ -z "$RPC_URL" || -z "$PRIVATE_KEY" || -z "$OWNER" || -z "$POOL_MANAGER" ]]; then
   echo "Missing required environment values. Required: RPC_URL, PRIVATE_KEY, OWNER, POOL_MANAGER."
@@ -66,8 +69,13 @@ is_tx_hash() {
   [[ "$maybe_hash" =~ ^0x[0-9a-fA-F]{64}$ ]]
 }
 
-current_nonce() {
-  cast nonce "$OWNER" --rpc-url "$RPC_URL"
+current_nonce_for() {
+  local rpc="$1"
+  local key="$2"
+  local signer
+
+  signer="$(cast wallet address --private-key "${key#0x}")"
+  cast nonce "$signer" --rpc-url "$rpc"
 }
 
 upsert_env() {
@@ -103,9 +111,9 @@ deploy_from_artifact() {
   bytecode="$(jq -r '.bytecode.object' "$artifact")"
   args="$(cast abi-encode "$constructor_sig" "$@")"
   data="${bytecode}${args:2}"
-  nonce="$(current_nonce)"
+  nonce="$(current_nonce_for "$rpc" "$key")"
 
-  output="$(cast send --rpc-url "$rpc" --private-key "$key" --nonce "$nonce" --create "$data")"
+  output="$(cast send --rpc-url "$rpc" --private-key "$key" --nonce "$nonce" --timeout "$TX_TIMEOUT_SECONDS" --create "$data")"
   tx_hash="$(awk '/^transactionHash[[:space:]]/{print $2; exit}' <<<"$output")"
   contract_address="$(awk '/^contractAddress[[:space:]]/{print $2; exit}' <<<"$output")"
 
@@ -120,6 +128,10 @@ deploy_from_artifact() {
 
 hook_addr="${HOOK_ADDRESS:-}"
 hook_tx="${HOOK_DEPLOY_TX:-}"
+if [[ "$FORCE_REDEPLOY" == "true" || "$FORCE_REDEPLOY" == "1" ]]; then
+  hook_addr=""
+  hook_tx=""
+fi
 if [[ -n "$hook_tx" ]] && ! is_tx_hash "$hook_tx"; then
   hook_tx=""
 fi
@@ -146,6 +158,10 @@ fi
 
 prod_executor_addr="${EXECUTOR_ADDRESS:-}"
 prod_executor_tx="${EXECUTOR_DEPLOY_TX:-}"
+if [[ "$FORCE_REDEPLOY" == "true" || "$FORCE_REDEPLOY" == "1" ]]; then
+  prod_executor_addr=""
+  prod_executor_tx=""
+fi
 if [[ -n "$prod_executor_tx" ]] && ! is_tx_hash "$prod_executor_tx"; then
   prod_executor_tx=""
 fi
@@ -168,6 +184,10 @@ fi
 
 demo_executor_addr="${DEMO_EXECUTOR_ADDRESS:-}"
 demo_executor_tx="${DEMO_EXECUTOR_DEPLOY_TX:-}"
+if [[ "$FORCE_REDEPLOY" == "true" || "$FORCE_REDEPLOY" == "1" ]]; then
+  demo_executor_addr=""
+  demo_executor_tx=""
+fi
 if [[ -n "$demo_executor_tx" ]] && ! is_tx_hash "$demo_executor_tx"; then
   demo_executor_tx=""
 fi
@@ -190,22 +210,36 @@ fi
 
 prev_reactive_addr=""
 prev_reactive_tx=""
+prev_reactive_fund_tx=""
 if [[ -f "$DEPLOY_FILE" ]]; then
   prev_reactive_addr="$(jq -r '.reactiveLasna.reactive // empty' "$DEPLOY_FILE" 2>/dev/null || true)"
   prev_reactive_tx="$(jq -r '.reactiveLasna.tx.deployReactive // empty' "$DEPLOY_FILE" 2>/dev/null || true)"
+  prev_reactive_fund_tx="$(jq -r '.reactiveLasna.tx.fundReactive // empty' "$DEPLOY_FILE" 2>/dev/null || true)"
   if [[ "$prev_reactive_addr" == "null" ]]; then
     prev_reactive_addr=""
   fi
   if [[ "$prev_reactive_tx" == "null" ]]; then
     prev_reactive_tx=""
   fi
+  if [[ "$prev_reactive_fund_tx" == "null" ]]; then
+    prev_reactive_fund_tx=""
+  fi
 fi
 
 reactive_addr="${REACTIVE_ADDRESS:-$prev_reactive_addr}"
 reactive_tx="${REACTIVE_DEPLOY_TX:-$prev_reactive_tx}"
+reactive_fund_tx="${REACTIVE_FUND_TX:-$prev_reactive_fund_tx}"
+if [[ "$FORCE_REDEPLOY" == "true" || "$FORCE_REDEPLOY" == "1" ]]; then
+  reactive_addr=""
+  reactive_tx=""
+  reactive_fund_tx=""
+fi
 reactive_status="not_attempted"
 if [[ -n "$reactive_tx" ]] && ! is_tx_hash "$reactive_tx"; then
   reactive_tx=""
+fi
+if [[ -n "$reactive_fund_tx" ]] && ! is_tx_hash "$reactive_fund_tx"; then
+  reactive_fund_tx=""
 fi
 
 if [[ -n "$reactive_addr" && -n "$REACTIVE_RPC" ]] && code_exists "$reactive_addr" "$REACTIVE_RPC"; then
@@ -241,6 +275,31 @@ else
   fi
 fi
 
+if [[ -n "$reactive_addr" && -n "$REACTIVE_RPC" && -n "$REACTIVE_KEY" ]]; then
+  reactive_contract_balance="$(cast balance "$reactive_addr" --rpc-url "$REACTIVE_RPC" 2>/dev/null || echo 0)"
+  if [[ "$reactive_contract_balance" =~ ^[0-9]+$ ]] && [[ "$REACTIVE_TARGET_BALANCE_WEI" =~ ^[0-9]+$ ]]; then
+    if (( reactive_contract_balance < REACTIVE_TARGET_BALANCE_WEI )); then
+      reactive_top_up_wei=$((REACTIVE_TARGET_BALANCE_WEI - reactive_contract_balance))
+      reactive_fund_nonce="$(current_nonce_for "$REACTIVE_RPC" "$REACTIVE_KEY")"
+      reactive_fund_output="$(
+        cast send \
+          --rpc-url "$REACTIVE_RPC" \
+          --private-key "$REACTIVE_KEY" \
+          --nonce "$reactive_fund_nonce" \
+          --timeout "$TX_TIMEOUT_SECONDS" \
+          --value "$reactive_top_up_wei" \
+          "$reactive_addr"
+      )"
+      reactive_fund_tx="$(awk '/^transactionHash[[:space:]]/{print $2; exit}' <<<"$reactive_fund_output")"
+      if [[ -z "$reactive_fund_tx" ]]; then
+        echo "Failed to parse reactive funding tx hash."
+        echo "$reactive_fund_output"
+        exit 1
+      fi
+    fi
+  fi
+fi
+
 pool_key_encoded="$(
   cast abi-encode \
     "f(address,address,uint24,int24,address)" \
@@ -254,11 +313,15 @@ pool_id="$(cast keccak "$pool_key_encoded")"
 
 reactive_addr_json="null"
 reactive_tx_json="null"
+reactive_fund_tx_json="null"
 if [[ -n "$reactive_addr" ]]; then
   reactive_addr_json="\"$reactive_addr\""
 fi
 if [[ -n "$reactive_tx" ]]; then
   reactive_tx_json="\"$reactive_tx\""
+fi
+if [[ -n "$reactive_fund_tx" ]]; then
+  reactive_fund_tx_json="\"$reactive_fund_tx\""
 fi
 
 cat >"$DEPLOY_FILE" <<JSON
@@ -291,7 +354,8 @@ cat >"$DEPLOY_FILE" <<JSON
     "reactive": $reactive_addr_json,
     "status": "$reactive_status",
     "tx": {
-      "deployReactive": $reactive_tx_json
+      "deployReactive": $reactive_tx_json,
+      "fundReactive": $reactive_fund_tx_json
     }
   }
 }
@@ -313,6 +377,9 @@ if [[ -n "$reactive_addr" ]]; then
 fi
 if [[ -n "$reactive_tx" ]]; then
   upsert_env "REACTIVE_DEPLOY_TX" "$reactive_tx"
+fi
+if [[ -n "$reactive_fund_tx" ]]; then
+  upsert_env "REACTIVE_FUND_TX" "$reactive_fund_tx"
 fi
 upsert_env "UNICHAIN_EXPLORER_BASE" "$UNICHAIN_EXPLORER_BASE"
 upsert_env "LASNA_EXPLORER_BASE" "$LASNA_EXPLORER_BASE"
@@ -343,4 +410,7 @@ else
 fi
 if [[ -n "$reactive_tx" ]]; then
   echo "  Reactive tx:     $LASNA_EXPLORER_BASE/tx/$reactive_tx"
+fi
+if [[ -n "$reactive_fund_tx" ]]; then
+  echo "  Reactive fund tx:$LASNA_EXPLORER_BASE/tx/$reactive_fund_tx"
 fi

@@ -20,26 +20,38 @@
     "tx": {
       "deployHook": "0x",
       "deployExecutor": "0x",
-      "deployDemoExecutor": "0x",
-      "authorizeExecutor": "0x",
-      "authorizeDemoExecutor": "0x",
-      "configurePool": "0x",
-      "attack": "0x",
-      "detection": "0x",
-      "mitigation": "0x"
-    },
-    "outcome": {
-      "tier": 0,
-      "feePips": 0,
-      "pauseUntil": 0,
-      "throttleUntil": 0
+      "deployDemoExecutor": "0x"
     }
   },
   "reactiveLasna": {
     "reactive": null,
     "status": "not_attempted",
     "tx": {
-      "deployReactive": null
+      "deployReactive": null,
+      "fundReactive": null
+    }
+  },
+  "liveReactive": {
+    "setup": {
+      "authorizeExecutor": "0x",
+      "configurePool": "0x",
+      "bindRvm": "0x",
+      "clearMitigation": "0x"
+    },
+    "telemetry": {
+      "baseline": "0x",
+      "anomaly": "0x",
+      "retryAnomaly": null
+    },
+    "reactive": {
+      "lasnaMitigationPlannedTx": null,
+      "unichainCallbackTx": null
+    },
+    "outcome": {
+      "tier": 0,
+      "feePips": 0,
+      "pauseUntil": 0,
+      "throttleUntil": 0
     }
   }
 }

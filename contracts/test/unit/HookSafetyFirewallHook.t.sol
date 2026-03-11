@@ -139,6 +139,44 @@ contract HookSafetyFirewallHookTest is Test {
         hook.clearMitigation(unknown);
     }
 
+    function testEmitTelemetryForDemoEmitsAndUpdatesPoolState() public {
+        uint160 sqrtPriceX96 = 1_350_000_000_000;
+        int24 tick = 420;
+        uint128 liquidity = 850_000;
+        int128 amount0 = -2e18;
+        int128 amount1 = int128(15e17);
+        uint8 localRisk = 88;
+
+        vm.expectEmit(true, true, false, true, address(hook));
+        emit HookSafetyFirewallHook.SecurityTelemetry(
+            poolId,
+            address(this),
+            1,
+            uint64(block.timestamp),
+            uint64(block.number),
+            tick,
+            sqrtPriceX96,
+            liquidity,
+            amount0,
+            amount1,
+            true,
+            -2e18,
+            3_000,
+            localRisk
+        );
+
+        hook.emitTelemetryForDemo(poolId, 0, tick, sqrtPriceX96, liquidity, amount0, amount1, true, -2e18, 0, localRisk);
+
+        HookSafetyFirewallHook.PoolState memory state = hook.getPoolState(poolId);
+        assertEq(state.sequence, 1);
+        assertEq(state.lastSwapTimestamp, uint40(block.timestamp));
+        assertEq(state.lastSqrtPriceX96, sqrtPriceX96);
+        assertEq(state.lastTick, tick);
+        assertEq(state.lastLiquidity, liquidity);
+        assertTrue(state.lastDirectionZeroForOne);
+        assertEq(state.lastLocalRisk, localRisk);
+    }
+
     function testGetPoolConfigReturnsConfiguredFees() public {
         HookSafetyFirewallHook.PoolConfig memory cfg = hook.getPoolConfig(poolId);
         assertEq(cfg.baseFeePips, 3_000);

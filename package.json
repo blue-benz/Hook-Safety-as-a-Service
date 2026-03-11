@@ -23,6 +23,7 @@
     "frontend:build": "npm --workspace frontend run build",
     "demo-local": "bash scripts/demo/local.sh",
     "demo-sepolia": "bash scripts/demo/sepolia.sh",
+    "demo-sepolia-live-reactive": "bash scripts/demo/sepolia-live-reactive.sh",
     "format": "prettier --check \"README.md\" \"spec.md\" \"SECURITY.md\" \"CONTRIBUTING.md\" \"docs/**/*.md\" \"frontend/src/**/*.{ts,tsx,css}\" \"frontend/index.html\" \"shared/**/*.ts\" \".github/workflows/*.yml\""
   },
   "devDependencies": {
