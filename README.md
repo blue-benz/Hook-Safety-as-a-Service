@@ -73,7 +73,7 @@ flowchart TD
     ReactiveSub[HookSafetyReactive]
     ReactVM[ReactVM]
     CallbackProxy[Callback Proxy]
-    ReactiveSub -->|react(LogRecord)| ReactVM
+    ReactiveSub -->|react LogRecord| ReactVM
     ReactVM -->|callback payload arg0 replaced with RVM ID| CallbackProxy
   end
 

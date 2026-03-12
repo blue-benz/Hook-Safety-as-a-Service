@@ -7,6 +7,7 @@ out/
 /broadcast/*/31337/
 /broadcast/*/5/
 /broadcast/**/dry-run/
+/broadcast/00_DeployHookFirewall.s.sol/1301/
 
 # Dotenv file
 .env
@@ -19,3 +20,4 @@ frontend/
 lib/
 
 context/
+coverage/
